@@ -8,7 +8,7 @@
 | :--- | :--- | :--- |
 | **在线数据层 (`src/api/client.ts`)** | 全量走 `https://api.bgm.tv/v0`（搜索 `/v0/search/subjects`、季度浏览与排行 `/v0/subjects`、详情 `/v0/subjects/{id}`、章节 `/v0/episodes`、角色 `/v0/subjects/{id}/characters`、关联 `/v0/subjects/{id}/subjects`、收藏读写），固定 UA `tianchu/mokuroku`，串行请求队列 + `429` 退避 | **无需下载数 GB 离线快照**；接口响应透明缓存于 `data/collection.db` 的 `api_cache`（自动 LRU 上限 400 条，体积 `< 5 MB`），封面缓存自动 LRU 上限 300 张 |
 | **个人收藏与画像 (`data/collection.db`)** | 同步保存个人五态收藏、打分、在看单集进度及 `SlimSubject` 标签，实时聚合彩色 **个人口味标签云** 并重排 **高分未看推荐** | 本地数据几十 KB 级；网络波动时自动回退本地缓存保证看板可用 |
-| **本地紧凑看板 (`src/web/`)** | SvelteKit SSR + 语义化彩色标签（题材/来源/动画社分色，点击任意标签联动检索）+ 评分梯队胶囊 + 右侧原位详情抽屉 (`SubjectDrawer`) | 仅绑定 `127.0.0.1` 单机自用 |
+| **本地紧凑看板 (`src/web/`)** | SvelteKit SSR + 语义化彩色标签（题材/来源/动画社分色，点击任意标签联动检索）+ 评分梯队胶囊 + 非阻塞右侧原位详情抽屉 (`SubjectDrawer`，展开时主表自由滚动与无缝切换条目 + 过渡动效) | 仅绑定 `127.0.0.1` 单机自用 |
 
 ## 环境要求
 

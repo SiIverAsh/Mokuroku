@@ -1,5 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
+  import { cubicOut } from 'svelte/easing';
+  import { fade, slide } from 'svelte/transition';
   import SubjectDrawer from '$lib/components/SubjectDrawer.svelte';
   import {
     getPlatformBadgeClass,
@@ -77,6 +79,10 @@
     selectedSubjectId = null;
     searchInput = tagName;
     void runSearch();
+  }
+
+  function toggleRowSubject(id: number) {
+    selectedSubjectId = selectedSubjectId === id ? null : id;
   }
 
   async function handleSeasonChange(nextSeason: string, nextPlatform: number | null) {
@@ -182,10 +188,14 @@
       bind:value={searchInput}
     />
     <button class="btn btn-primary" type="submit" disabled={searching}>
-      {searching ? '检索中' : '检索'}
+      {#if searching}
+        <span class="spin-dot" aria-hidden="true"></span>检索中
+      {:else}
+        检索
+      {/if}
     </button>
     {#if displayedSearchHits !== null}
-      <button class="btn" type="button" onclick={clearSearch}>清空</button>
+      <button class="btn" type="button" onclick={clearSearch} transition:fade={{ duration: 140 }}>清空</button>
     {/if}
   </form>
 
@@ -198,7 +208,11 @@
         ? `上次同步: ${data.syncSummary.lastCollectionSync}`
         : '拉取 Bangumi 个人收藏与在看进度'}
     >
-      {syncingCollection ? '同步中...' : '同步收藏'}
+      {#if syncingCollection}
+        <span class="spin-dot" aria-hidden="true"></span>同步中...
+      {:else}
+        同步收藏
+      {/if}
     </button>
   </div>
 </header>
@@ -206,6 +220,7 @@
 {#if data.onlineError}
   <div
     style="background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 6px; padding: 6px 10px; margin-bottom: 10px;"
+    transition:slide={{ duration: 180, easing: cubicOut }}
   >
     {data.onlineError}（若本机直连 api.bgm.tv 受限，请在 .env 配置 HTTPS_PROXY）
   </div>
@@ -214,6 +229,7 @@
 {#if syncBanner}
   <div
     style="background: var(--surface); border: 1px solid var(--accent-border); border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;"
+    transition:slide={{ duration: 180, easing: cubicOut }}
   >
     <span>{syncBanner}</span>
     <button class="btn btn-xs" onclick={() => (syncBanner = '')}>关闭</button>
@@ -222,7 +238,7 @@
 
 <!-- 全文检索结果面板（有查询时原位展开，点击行开右侧抽屉） -->
 {#if displayedSearchHits !== null}
-  <section class="panel">
+  <section class="panel" transition:slide={{ duration: 220, easing: cubicOut }}>
     <div class="panel-header">
       <div class="panel-title">
         <span>检索结果 ({displayedSearchHits.length})</span>
@@ -250,7 +266,11 @@
           </thead>
           <tbody>
             {#each displayedSearchHits as hit (hit.id)}
-              <tr onclick={() => (selectedSubjectId = hit.id)}>
+              <tr
+                data-subject-trigger
+                class:is-selected={selectedSubjectId === hit.id}
+                onclick={() => toggleRowSubject(hit.id)}
+              >
                 <td>
                   <span class={getPlatformBadgeClass(hit.platformLabel || hit.typeLabel)}>
                     {hit.platformLabel || hit.typeLabel}
@@ -369,7 +389,11 @@
           <tbody>
             {#each data.watchingList as item (item.subjectId)}
               {@const airBadge = formatAirBadge(item.nextEpisode)}
-              <tr onclick={() => (selectedSubjectId = item.subjectId)}>
+              <tr
+                data-subject-trigger
+                class:is-selected={selectedSubjectId === item.subjectId}
+                onclick={() => toggleRowSubject(item.subjectId)}
+              >
                 <td title="{item.nameCn || item.name} ({item.name})">
                   <span class="subj-title">{item.nameCn || item.name}</span>
                 </td>
@@ -535,7 +559,11 @@
         </thead>
         <tbody>
           {#each data.seasonalAnime as item (item.id)}
-            <tr onclick={() => (selectedSubjectId = item.id)}>
+            <tr
+              data-subject-trigger
+              class:is-selected={selectedSubjectId === item.id}
+              onclick={() => toggleRowSubject(item.id)}
+            >
               <td><span class={getPlatformBadgeClass(item.platformLabel)}>{item.platformLabel}</span></td>
               <td title="{item.nameCn || item.name} | {item.name}">
                 <span class="subj-title">{item.nameCn || item.name}</span>
@@ -615,7 +643,11 @@
         </thead>
         <tbody>
           {#each data.recommendations as rec (rec.id)}
-            <tr onclick={() => (selectedSubjectId = rec.id)}>
+            <tr
+              data-subject-trigger
+              class:is-selected={selectedSubjectId === rec.id}
+              onclick={() => toggleRowSubject(rec.id)}
+            >
               <td class="num" style="color: var(--purple); font-weight: 600;">#{rec.rank}</td>
               <td><span class={getPlatformBadgeClass(rec.platformLabel)}>{rec.platformLabel}</span></td>
               <td title="{rec.nameCn || rec.name} | {rec.name}">

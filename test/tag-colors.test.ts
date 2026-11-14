@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { shouldCloseDrawerOnWindowClick } from '../src/web/lib/drawer-behavior.js';
 import {
   getPlatformBadgeClass,
   getScoreTierClass,
@@ -39,5 +42,35 @@ describe('semantic colored tags, platforms, and score tiers', () => {
     expect(getScoreTierClass(7.5)).toContain('score-good');
     expect(getScoreTierClass(6.2)).toContain('score-ok');
     expect(getScoreTierClass(4.8)).toContain('score-low');
+  });
+
+  it('allows scrolling main entries and switching rows while drawer is open', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/web/app.css'), 'utf8');
+    const backdropBlock = css.match(/\.drawer-backdrop\s*\{[^}]*\}/)?.[0] ?? '';
+    const bodyBlock = css.match(/\.drawer-body\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(backdropBlock).toContain('pointer-events: none');
+    expect(bodyBlock).toContain('min-height: 0');
+    expect(bodyBlock).toContain('overflow-y: auto');
+    expect(bodyBlock).toContain('overscroll-behavior: contain');
+
+    const panel = { contains: (node: unknown) => node === insideTarget };
+    const insideTarget = { isConnected: true, closest: () => null };
+    const rowTrigger = {
+      isConnected: true,
+      closest: (sel: string) => (sel === '[data-subject-trigger]' ? {} : null)
+    };
+    const detachedNode = { isConnected: false, closest: () => null };
+    const filterSelect = {
+      isConnected: true,
+      closest: (sel: string) => (sel.includes('select') ? {} : null)
+    };
+    const blankArea = { isConnected: true, closest: () => null };
+
+    expect(shouldCloseDrawerOnWindowClick(null, blankArea, panel)).toBe(false);
+    expect(shouldCloseDrawerOnWindowClick(400602, insideTarget, panel)).toBe(false);
+    expect(shouldCloseDrawerOnWindowClick(400602, rowTrigger, panel)).toBe(false);
+    expect(shouldCloseDrawerOnWindowClick(400602, detachedNode, panel)).toBe(false);
+    expect(shouldCloseDrawerOnWindowClick(400602, filterSelect, panel)).toBe(false);
+    expect(shouldCloseDrawerOnWindowClick(400602, blankArea, panel)).toBe(true);
   });
 });
