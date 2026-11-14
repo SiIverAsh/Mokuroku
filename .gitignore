@@ -1,0 +1,25 @@
+node_modules/
+.svelte-kit/
+build/
+dist/
+coverage/
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+
+# Databases & state
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+data/
+
+# Caches & archive dumps
+cache/
+*.zip
+*.part
+logs/
+tmp/
+.DS_Store

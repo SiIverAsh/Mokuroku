@@ -1,0 +1,46 @@
+{
+  "name": "mokuroku",
+  "version": "0.1.0",
+  "description": "基于 Bangumi Archive 离线快照与 v0 API 的个人动画检索与看板",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bin": {
+    "mokuroku": "./bin/mokuroku.mjs"
+  },
+  "scripts": {
+    "mokuroku": "tsx src/cli.ts",
+    "sync": "tsx src/cli.ts sync",
+    "dev": "vite dev --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "svelte-kit sync && tsc --noEmit"
+  },
+  "dependencies": {
+    "@bgm38/wiki": "0.3.3",
+    "better-sqlite3": "13.1.1",
+    "cac": "^6.7.14",
+    "sqlite-better-trigram": "0.0.6",
+    "sqlite-better-trigram-windows-x64": "0.0.6",
+    "yaml": "^2.6.1",
+    "yauzl": "^3.2.0"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "^5.2.12",
+    "@sveltejs/kit": "^2.16.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@types/yauzl": "^2.10.3",
+    "msw": "^2.7.0",
+    "svelte": "^5.19.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^3.0.4"
+  }
+}
