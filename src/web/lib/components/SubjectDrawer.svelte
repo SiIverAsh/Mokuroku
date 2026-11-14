@@ -189,7 +189,7 @@
 
     <div class="drawer-body">
       {#if loading}
-        <div style="color: var(--text-muted); padding: 16px 0;">读取本地库中...</div>
+        <div style="color: var(--text-muted); padding: 16px 0;">在线获取条目详情中...</div>
       {:else if errorMsg}
         <div style="color: var(--rose); padding: 12px 0;">{errorMsg}</div>
       {:else if detail}

@@ -1,160 +1,8 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
-import { getLoadablePath } from 'sqlite-better-trigram';
-import { PROJECT_ROOT, ensureDir, getAppPaths } from '../config.js';
+import { ensureDir, getAppPaths } from '../config.js';
 
-export const SCHEMA_SQL_PATH = resolve(PROJECT_ROOT, 'src', 'db', 'schema.sql');
-
-export const SLOT_A_FILENAME = 'mokuroku-a.db';
-export const SLOT_B_FILENAME = 'mokuroku-b.db';
-
-export interface ActiveDbPointer {
-  activeFile: string;
-  updatedAt: string;
-  dumpName?: string;
-  dumpUpdatedAt?: string;
-  sha256?: string;
-  rowCounts?: Record<string, number>;
-  infoboxFailures?: number;
-}
-
-export function resolveBetterTrigramPath(): string {
-  try {
-    const p = getLoadablePath();
-    if (p && existsSync(p)) {
-      return p;
-    }
-  } catch {
-    // Fallback to explicit Windows binary location
-  }
-  const winFallback = resolve(
-    PROJECT_ROOT,
-    'node_modules',
-    'sqlite-better-trigram-windows-x64',
-    'better-trigram.dll'
-  );
-  if (existsSync(winFallback)) {
-    return winFallback;
-  }
-  return getLoadablePath();
-}
-
-export function loadBetterTrigram(db: Database.Database): void {
-  db.loadExtension(resolveBetterTrigramPath());
-}
-
-export interface OpenArchiveDbOptions {
-  readonly?: boolean;
-  fileMustExist?: boolean;
-  importMode?: boolean;
-}
-
-export function openArchiveDb(
-  dbPath: string,
-  options?: OpenArchiveDbOptions
-): Database.Database {
-  if (!options?.readonly && dbPath !== ':memory:') {
-    ensureDir(dirname(dbPath));
-  }
-
-  const db = new Database(dbPath, {
-    readonly: options?.readonly ?? false,
-    fileMustExist: options?.fileMustExist ?? false
-  });
-
-  loadBetterTrigram(db);
-
-  if (options?.importMode) {
-    db.pragma('synchronous = OFF');
-    db.pragma('journal_mode = MEMORY');
-    db.pragma('temp_store = MEMORY');
-    db.pragma('cache_size = -131072'); // 128 MB
-    db.pragma('locking_mode = EXCLUSIVE');
-  } else if (options?.readonly) {
-    db.pragma('temp_store = MEMORY');
-    db.pragma('cache_size = -65536'); // 64 MB
-    db.pragma('mmap_size = 268435456'); // 256 MB
-  } else {
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
-    db.pragma('temp_store = MEMORY');
-    db.pragma('cache_size = -65536');
-    db.pragma('mmap_size = 268435456');
-  }
-
-  return db;
-}
-
-export function restorePragmasAfterImport(db: Database.Database): void {
-  db.pragma('locking_mode = NORMAL');
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-  db.pragma('optimize');
-}
-
-export function initArchiveSchema(db: Database.Database): void {
-  const sql = readFileSync(SCHEMA_SQL_PATH, 'utf8');
-  db.exec(sql);
-}
-
-export function readActivePointer(dataDir?: string): ActiveDbPointer | null {
-  const { activePointerPath } = getAppPaths(dataDir ? { dataDir } : undefined);
-  if (!existsSync(activePointerPath)) {
-    return null;
-  }
-  try {
-    return JSON.parse(readFileSync(activePointerPath, 'utf8')) as ActiveDbPointer;
-  } catch {
-    return null;
-  }
-}
-
-export function resolveActiveArchiveDbPath(dataDir?: string): string {
-  const paths = getAppPaths(dataDir ? { dataDir } : undefined);
-  const pointer = readActivePointer(paths.dataDir);
-  if (pointer?.activeFile) {
-    const candidate = resolve(paths.dataDir, pointer.activeFile);
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  const slotA = resolve(paths.dataDir, SLOT_A_FILENAME);
-  const slotB = resolve(paths.dataDir, SLOT_B_FILENAME);
-  if (existsSync(slotA)) return slotA;
-  if (existsSync(slotB)) return slotB;
-  return slotA;
-}
-
-export function resolveStandbyArchiveDbPath(dataDir?: string): {
-  standbyFile: string;
-  standbyPath: string;
-} {
-  const paths = getAppPaths(dataDir ? { dataDir } : undefined);
-  const pointer = readActivePointer(paths.dataDir);
-  const activeFile = pointer?.activeFile;
-  const standbyFile = activeFile === SLOT_A_FILENAME ? SLOT_B_FILENAME : SLOT_A_FILENAME;
-  return {
-    standbyFile,
-    standbyPath: resolve(paths.dataDir, standbyFile)
-  };
-}
-
-export function switchActiveArchiveDb(
-  pointer: ActiveDbPointer,
-  dataDir?: string
-): ActiveDbPointer {
-  const paths = getAppPaths(dataDir ? { dataDir } : undefined);
-  ensureDir(paths.dataDir);
-  const targetDbPath = resolve(paths.dataDir, pointer.activeFile);
-  if (!existsSync(targetDbPath)) {
-    throw new Error(`目标数据库文件不存在，无法切换: ${targetDbPath}`);
-  }
-  const tmpPointerPath = `${paths.activePointerPath}.tmp`;
-  writeFileSync(tmpPointerPath, JSON.stringify(pointer, null, 2), 'utf8');
-  renameSync(tmpPointerPath, paths.activePointerPath);
-  return pointer;
-}
+export const MAX_API_CACHE_ROWS = 400;
 
 const COLLECTION_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS collection (
@@ -165,14 +13,18 @@ CREATE TABLE IF NOT EXISTS collection (
   ep_status INTEGER NOT NULL DEFAULT 0,
   vol_status INTEGER NOT NULL DEFAULT 0,
   comment TEXT NOT NULL DEFAULT '',
-  tags TEXT NOT NULL DEFAULT '[]',    -- JSON string[]
+  tags TEXT NOT NULL DEFAULT '[]',    -- 用户个人标签 JSON string[]
   private INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT '',
   subject_name TEXT NOT NULL DEFAULT '',
   subject_name_cn TEXT NOT NULL DEFAULT '',
   subject_eps INTEGER NOT NULL DEFAULT 0,
   subject_date TEXT,
-  subject_score REAL
+  subject_score REAL,
+  subject_rank INTEGER,
+  subject_total INTEGER NOT NULL DEFAULT 0,
+  subject_platform TEXT NOT NULL DEFAULT '',
+  subject_tags_json TEXT NOT NULL DEFAULT '[]' -- 条目公共标签 JSON Array<{name, count}>
 );
 
 CREATE INDEX IF NOT EXISTS idx_collection_type ON collection(type);
@@ -207,17 +59,39 @@ CREATE TABLE IF NOT EXISTS calendar_cache (
   PRIMARY KEY (weekday_id, subject_id)
 );
 
-CREATE TABLE IF NOT EXISTS subject_override (
-  subject_id INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS api_cache (
+  cache_key TEXT PRIMARY KEY,
   payload_json TEXT NOT NULL,
-  fetched_at TEXT NOT NULL
+  fetched_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_api_cache_expires ON api_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_api_cache_fetched ON api_cache(fetched_at);
 
 CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `;
+
+function migrateCollectionColumns(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(collection)').all() as Array<{ name: string }>;
+  const existing = new Set(cols.map((c) => c.name));
+
+  if (!existing.has('subject_rank')) {
+    db.exec('ALTER TABLE collection ADD COLUMN subject_rank INTEGER;');
+  }
+  if (!existing.has('subject_total')) {
+    db.exec('ALTER TABLE collection ADD COLUMN subject_total INTEGER NOT NULL DEFAULT 0;');
+  }
+  if (!existing.has('subject_platform')) {
+    db.exec("ALTER TABLE collection ADD COLUMN subject_platform TEXT NOT NULL DEFAULT '';");
+  }
+  if (!existing.has('subject_tags_json')) {
+    db.exec("ALTER TABLE collection ADD COLUMN subject_tags_json TEXT NOT NULL DEFAULT '[]';");
+  }
+}
 
 export function openCollectionDb(userDbPath?: string): Database.Database {
   const resolvedPath = userDbPath ?? getAppPaths().userDbPath;
@@ -229,5 +103,78 @@ export function openCollectionDb(userDbPath?: string): Database.Database {
   db.pragma('synchronous = NORMAL');
   db.pragma('temp_store = MEMORY');
   db.exec(COLLECTION_SCHEMA_SQL);
+  migrateCollectionColumns(db);
   return db;
+}
+
+export interface CachedEntry<T> {
+  value: T;
+  fetchedAt: number;
+  stale: boolean;
+}
+
+export function readApiCache<T>(
+  db: Database.Database,
+  cacheKey: string,
+  allowStale = false
+): CachedEntry<T> | null {
+  const row = db
+    .prepare(
+      'SELECT payload_json, fetched_at, expires_at FROM api_cache WHERE cache_key = ?'
+    )
+    .get(cacheKey) as
+    | { payload_json: string; fetched_at: number; expires_at: number }
+    | undefined;
+
+  if (!row) return null;
+  const now = Date.now();
+  const isStale = now > row.expires_at;
+  if (isStale && !allowStale) return null;
+
+  try {
+    return {
+      value: JSON.parse(row.payload_json) as T,
+      fetchedAt: row.fetched_at,
+      stale: isStale
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeApiCache<T>(
+  db: Database.Database,
+  cacheKey: string,
+  payload: T,
+  ttlMs: number,
+  maxRows = MAX_API_CACHE_ROWS
+): void {
+  const now = Date.now();
+  const expiresAt = now + Math.max(1000, ttlMs);
+
+  db.prepare(
+    `INSERT OR REPLACE INTO api_cache (cache_key, payload_json, fetched_at, expires_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(cacheKey, JSON.stringify(payload), now, expiresAt);
+
+  // Bounded LRU pruning so collection.db never grows beyond a few MBs
+  const countRow = db.prepare('SELECT COUNT(*) AS cnt FROM api_cache').get() as { cnt: number };
+  if (countRow.cnt > maxRows) {
+    db.prepare('DELETE FROM api_cache WHERE expires_at < ?').run(now);
+    const afterRow = db.prepare('SELECT COUNT(*) AS cnt FROM api_cache').get() as { cnt: number };
+    if (afterRow.cnt > maxRows) {
+      const excess = afterRow.cnt - maxRows;
+      db.prepare(
+        `DELETE FROM api_cache WHERE cache_key IN (
+           SELECT cache_key FROM api_cache ORDER BY fetched_at ASC LIMIT ?
+         )`
+      ).run(excess);
+    }
+  }
+}
+
+export function clearApiCache(db: Database.Database): number {
+  const info = db.prepare('DELETE FROM api_cache').run();
+  db.exec('VACUUM;');
+  return info.changes;
 }

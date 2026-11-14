@@ -8,27 +8,12 @@ importers:
 
   .:
     dependencies:
-      '@bgm38/wiki':
-        specifier: 0.3.3
-        version: 0.3.3
       better-sqlite3:
         specifier: 13.1.1
         version: 13.1.1
       cac:
         specifier: ^6.7.14
         version: 6.7.14
-      sqlite-better-trigram:
-        specifier: 0.0.6
-        version: 0.0.6
-      sqlite-better-trigram-windows-x64:
-        specifier: 0.0.6
-        version: 0.0.6
-      yaml:
-        specifier: ^2.6.1
-        version: 2.9.1
-      yauzl:
-        specifier: ^3.2.0
-        version: 3.4.0
     devDependencies:
       '@sveltejs/adapter-node':
         specifier: ^5.2.12
@@ -45,9 +30,6 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.5
-      '@types/yauzl':
-        specifier: ^2.10.3
-        version: 2.10.3
       msw:
         specifier: ^2.7.0
         version: 2.15.0(@types/node@22.20.5)(typescript@5.9.3)
@@ -68,10 +50,6 @@ importers:
         version: 3.2.7(@types/node@22.20.5)(msw@2.15.0(@types/node@22.20.5)(typescript@5.9.3))(tsx@4.23.15)(yaml@2.9.1)
 
 packages:
-
-  '@bgm38/wiki@0.3.3':
-    resolution: {integrity: sha512-Extj5fsFmH8pqh+XYYjRDUm5Ar1c2KX6Jup4p198sm2Xmjsc/XK83wP71If2wStd3rf7stSgK7ADE/daX/lglA==}
-    engines: {node: '>=18'}
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -714,9 +692,6 @@ packages:
   '@types/statuses@2.0.6':
     resolution: {integrity: sha512-xMAgYwceFhRA2zY+XbEA7mxYbA093wdiW8Vu6gZPGWy9cmOyU9XesH1tNcEWsKFd5Vzrqx5T3D38PWx1FIIXkA==}
 
-  '@types/yauzl@2.10.3':
-    resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
-
   '@vitest/expect@3.2.7':
     resolution: {integrity: sha512-E8eBXaKibuvH2pSZErOjdVb5vF4PbKYcrnluBTYxEk1l/VhhwZg1kZQsdtjq+CsF5CFydf2Rdkz7jDHKSisi3w==}
 
@@ -1005,9 +980,6 @@ packages:
     resolution: {integrity: sha512-//nshmD55c46FuFw26xV/xFAaB5HF9Xdap7HJBBnrKdAd6/GxDBaNA1870O79+9ueg61cZLSVc+OaFlfmObYVQ==}
     engines: {node: '>= 14.16'}
 
-  pend@1.2.0:
-    resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
-
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -1053,39 +1025,6 @@ packages:
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
-
-  sqlite-better-trigram-darwin-arm64@0.0.6:
-    resolution: {integrity: sha512-Afg5bmLD1SckxyjYIxsCJ2JETQwyV7lORWM3l9E60N0Bacg1chnqcTM3jIBjbvivt20IiQe4OmNpi4LetCeuRQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  sqlite-better-trigram-darwin-x64@0.0.6:
-    resolution: {integrity: sha512-hAh8cBXBl4ZiX23y/8iGXhhRbrX7VMLbA/rF8BLNiw8EjX2FjITv9kbXsolRO76SJnCMwD6wuERTgYD1nBZgOA==}
-    cpu: [x64]
-    os: [darwin]
-
-  sqlite-better-trigram-linux-arm64@0.0.6:
-    resolution: {integrity: sha512-rM8bPMKVNSKQah7wGW9iNu7aLcnmYEDL9FTPD3BEele8LY43A6aaIlJoHeIy0iHvw8OCMxyADnCPG8e4AZAtkw==}
-    cpu: [arm64]
-    os: [linux]
-
-  sqlite-better-trigram-linux-x64@0.0.6:
-    resolution: {integrity: sha512-kkNgm87TsvXe+CwY8QRhg6kWeQ/7yHzXm3BUI0j991sqS8YuDMMC1qS4nDXmaytAsVHjxHXkZXqdiESf2/WbPw==}
-    cpu: [x64]
-    os: [linux]
-
-  sqlite-better-trigram-windows-arm64@0.0.6:
-    resolution: {integrity: sha512-QDvTKbogR/lUsNcQ+lt7doTcyj6W+cUj0EgXfI8rEbm0/fibVmans0QbsVenBrsUbRyWSS2rapZpOrEIGctAGw==}
-    cpu: [arm64]
-    os: [win32]
-
-  sqlite-better-trigram-windows-x64@0.0.6:
-    resolution: {integrity: sha512-pOxqarqOlHNvyotNin0pd1iUJFH9gzmF6008z77kPJMULfAj0XKjxi37RTYvj3KUrPgLfF7bQHjQdM3b4t1Vpg==}
-    cpu: [x64]
-    os: [win32]
-
-  sqlite-better-trigram@0.0.6:
-    resolution: {integrity: sha512-N8Ht47uYdJunTowORz2gP/k8vK2kPNj59WLnsmo+yNbQRIHrUPS+YXJIeKQB60ca17tpsFB/wqK3AorRBA6CvA==}
 
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
@@ -1287,16 +1226,10 @@ packages:
     resolution: {integrity: sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g==}
     engines: {node: '>=12'}
 
-  yauzl@3.4.0:
-    resolution: {integrity: sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==}
-    engines: {node: '>=12'}
-
   zimmerframe@1.1.5:
     resolution: {integrity: sha512-msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA==}
 
 snapshots:
-
-  '@bgm38/wiki@0.3.3': {}
 
   '@esbuild/aix-ppc64@0.25.12':
     optional: true
@@ -1727,10 +1660,6 @@ snapshots:
 
   '@types/statuses@2.0.6': {}
 
-  '@types/yauzl@2.10.3':
-    dependencies:
-      '@types/node': 22.20.5
-
   '@vitest/expect@3.2.7':
     dependencies:
       '@types/chai': 5.2.3
@@ -2023,8 +1952,6 @@ snapshots:
 
   pathval@2.0.1: {}
 
-  pend@1.2.0: {}
-
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
@@ -2091,32 +2018,6 @@ snapshots:
       totalist: 3.0.1
 
   source-map-js@1.2.2: {}
-
-  sqlite-better-trigram-darwin-arm64@0.0.6:
-    optional: true
-
-  sqlite-better-trigram-darwin-x64@0.0.6:
-    optional: true
-
-  sqlite-better-trigram-linux-arm64@0.0.6:
-    optional: true
-
-  sqlite-better-trigram-linux-x64@0.0.6:
-    optional: true
-
-  sqlite-better-trigram-windows-arm64@0.0.6:
-    optional: true
-
-  sqlite-better-trigram-windows-x64@0.0.6: {}
-
-  sqlite-better-trigram@0.0.6:
-    optionalDependencies:
-      sqlite-better-trigram-darwin-arm64: 0.0.6
-      sqlite-better-trigram-darwin-x64: 0.0.6
-      sqlite-better-trigram-linux-arm64: 0.0.6
-      sqlite-better-trigram-linux-x64: 0.0.6
-      sqlite-better-trigram-windows-arm64: 0.0.6
-      sqlite-better-trigram-windows-x64: 0.0.6
 
   stackback@0.0.2: {}
 
@@ -2300,7 +2201,8 @@ snapshots:
 
   y18n@5.0.8: {}
 
-  yaml@2.9.1: {}
+  yaml@2.9.1:
+    optional: true
 
   yargs-parser@21.1.1: {}
 
@@ -2313,9 +2215,5 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
-
-  yauzl@3.4.0:
-    dependencies:
-      pend: 1.2.0
 
   zimmerframe@1.1.5: {}

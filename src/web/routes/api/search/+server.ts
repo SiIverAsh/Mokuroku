@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { searchSubjects } from '../../../../search.js';
-import { getServerArchiveDb } from '../../../lib/server/db.js';
+import { searchSubjectsOnline } from '../../../../search.js';
+import { getServerBangumiClient } from '../../../lib/server/db.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -10,8 +10,7 @@ export const GET: RequestHandler = async ({ url }) => {
   const platformParam = url.searchParams.get('platform');
   const limitParam = url.searchParams.get('limit');
 
-  const db = getServerArchiveDb();
-  if (!db || !q) {
+  if (!q) {
     return json({
       query: q,
       hits: [],
@@ -19,15 +18,27 @@ export const GET: RequestHandler = async ({ url }) => {
     });
   }
 
-  const hits = searchSubjects(db, q, {
-    type: typeParam ? Number(typeParam) : undefined,
-    platform: platformParam ? Number(platformParam) : undefined,
-    limit: limitParam ? Number(limitParam) : 30
-  });
+  try {
+    const hits = await searchSubjectsOnline(getServerBangumiClient(), q, {
+      type: typeParam ? Number(typeParam) : undefined,
+      platform: platformParam ? Number(platformParam) : undefined,
+      limit: limitParam ? Number(limitParam) : 30
+    });
 
-  return json({
-    query: q,
-    hits,
-    elapsedMs: Number((performance.now() - t0).toFixed(2))
-  });
+    return json({
+      query: q,
+      hits,
+      elapsedMs: Number((performance.now() - t0).toFixed(2))
+    });
+  } catch (err) {
+    return json(
+      {
+        query: q,
+        hits: [],
+        error: err instanceof Error ? err.message : String(err),
+        elapsedMs: Number((performance.now() - t0).toFixed(2))
+      },
+      { status: 502 }
+    );
+  }
 };

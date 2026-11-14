@@ -1,5 +1,5 @@
 import { getDashboardData } from '$lib/server/dashboard.js';
-import { getServerArchiveDb, getServerCollectionDb } from '$lib/server/db.js';
+import { getServerBangumiClient, getServerCollectionDb } from '$lib/server/db.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ url }) => {
   const searchType =
     typeRaw !== null && typeRaw !== '' ? Number(typeRaw) : null;
 
-  return getDashboardData(getServerArchiveDb(), getServerCollectionDb(), {
+  return getDashboardData(getServerCollectionDb(), getServerBangumiClient(), {
     season,
     platform,
     q,

@@ -1,7 +1,16 @@
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs';
 import { resolve } from 'node:path';
 import type Database from 'better-sqlite3';
 import { BGM_API_BASE_URL, USER_AGENT, ensureDir, getAppPaths } from '../config.js';
+import { readApiCache, writeApiCache } from '../db/open.js';
 import {
   AuthRequiredError,
   EnvPersonalTokenProvider,
@@ -10,6 +19,97 @@ import {
 } from './auth.js';
 
 export { AuthRequiredError, EnvPersonalTokenProvider, TokenExpiredError, type TokenProvider };
+
+export const MAX_CACHED_COVERS = 300;
+
+export interface WikiV0ArrayItem {
+  k?: string;
+  v: string;
+}
+
+export interface WikiV0Item {
+  key: string;
+  value: string | WikiV0ArrayItem[];
+}
+
+export interface BangumiSubjectDetail {
+  id: number;
+  type: number;
+  name: string;
+  name_cn: string;
+  summary: string;
+  nsfw: boolean;
+  locked?: boolean;
+  date?: string | null;
+  platform?: string;
+  eps?: number;
+  total_episodes?: number;
+  volumes?: number;
+  series?: boolean;
+  images?: {
+    large?: string;
+    common?: string;
+    medium?: string;
+    small?: string;
+    grid?: string;
+  };
+  rating?: {
+    rank?: number;
+    total?: number;
+    score?: number;
+    count?: Record<string, number>;
+  };
+  collection?: {
+    wish?: number;
+    collect?: number;
+    doing?: number;
+    on_hold?: number;
+    dropped?: number;
+  };
+  tags?: Array<{ name: string; count: number }>;
+  meta_tags?: string[];
+  infobox?: WikiV0Item[];
+}
+
+export interface BangumiEpisodeItem {
+  id: number;
+  type: number; // 0=本篇, 1=SP, 2=OP, 3=ED
+  name: string;
+  name_cn: string;
+  sort: number;
+  ep?: number;
+  airdate: string;
+  comment?: number;
+  duration?: string;
+  desc?: string;
+  disc?: number;
+}
+
+export interface BangumiRelatedCharacter {
+  id: number;
+  name: string;
+  type: number;
+  relation: string; // e.g. '主角', '配角', '客串'
+  summary?: string;
+  actors?: Array<{
+    id: number;
+    name: string;
+    type?: number;
+  }>;
+}
+
+export interface BangumiSubjectRelation {
+  id: number;
+  type: number;
+  name: string;
+  name_cn: string;
+  relation: string; // e.g. '续集', '前传', '改编'
+  images?: {
+    common?: string;
+    medium?: string;
+    small?: string;
+  };
+}
 
 export interface UserCollectionItem {
   subject_id: number;
@@ -56,19 +156,7 @@ export interface UpdateCollectionPayload {
 }
 
 export interface UserEpisodeCollectionItem {
-  episode: {
-    id: number;
-    type: number;
-    name: string;
-    name_cn: string;
-    sort: number;
-    ep?: number;
-    airdate: string;
-    comment?: number;
-    duration?: string;
-    desc?: string;
-    disc?: number;
-  };
+  episode: BangumiEpisodeItem;
   type: number; // 0=未收藏, 1=想看, 2=看过, 3=抛弃
   updated_at?: number | string;
 }
@@ -108,34 +196,30 @@ export interface CalendarDay {
   }>;
 }
 
-export interface BangumiSubjectDetail {
-  id: number;
+export interface SearchSubjectsApiParams {
+  keyword: string;
+  sort?: 'match' | 'heat' | 'rank' | 'score';
+  types?: number[];
+  tags?: string[];
+  metaTags?: string[];
+  airDate?: string[];
+  rating?: string[];
+  rank?: string[];
+  includeNsfw?: boolean;
+  limit?: number;
+  offset?: number;
+  forceRefresh?: boolean;
+}
+
+export interface BrowseSubjectsApiParams {
   type: number;
-  name: string;
-  name_cn: string;
-  summary: string;
-  nsfw: boolean;
-  locked?: boolean;
-  date?: string | null;
-  platform?: string;
-  eps?: number;
-  total_episodes?: number;
-  rating?: {
-    rank?: number;
-    total?: number;
-    score?: number;
-    count?: Record<string, number>;
-  };
-  collection?: {
-    wish?: number;
-    collect?: number;
-    doing?: number;
-    on_hold?: number;
-    dropped?: number;
-  };
-  tags?: Array<{ name: string; count: number }>;
-  meta_tags?: string[];
-  infobox?: Array<{ key: string; value: unknown }>;
+  cat?: number;
+  sort?: 'date' | 'rank';
+  year?: number;
+  month?: number;
+  limit?: number;
+  offset?: number;
+  forceRefresh?: boolean;
 }
 
 export interface BangumiClientOptions {
@@ -143,10 +227,12 @@ export interface BangumiClientOptions {
   tokenProvider?: TokenProvider;
   username?: string;
   coversDir?: string;
+  cacheDb?: Database.Database;
   fetchImpl?: typeof fetch;
   minIntervalMs?: number;
   maxRetries?: number;
   backoffBaseMs?: number;
+  defaultTimeoutMs?: number;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -165,6 +251,28 @@ function parseRetryAfterMs(headerValue: string | null, fallbackMs: number): numb
     return Math.max(0, dateMs - Date.now());
   }
   return fallbackMs;
+}
+
+function pruneCoversCacheDir(coversDir: string, maxFiles = MAX_CACHED_COVERS): void {
+  if (!existsSync(coversDir)) return;
+  const entries = readdirSync(coversDir)
+    .filter((f) => f.endsWith('.jpg'))
+    .map((name) => {
+      const full = resolve(coversDir, name);
+      try {
+        return { full, mtimeMs: statSync(full).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is { full: string; mtimeMs: number } => x !== null);
+
+  if (entries.length <= maxFiles) return;
+  entries.sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const removeCount = entries.length - maxFiles;
+  for (let i = 0; i < removeCount; i++) {
+    rmSync(entries[i].full, { force: true });
+  }
 }
 
 export class BangumiApiError extends Error {
@@ -186,10 +294,12 @@ export class BangumiClient {
   private readonly tokenProvider: TokenProvider;
   private readonly username: string;
   private readonly coversDir: string;
+  private readonly cacheDb?: Database.Database;
   private readonly fetchFn: typeof fetch;
   private readonly minIntervalMs: number;
   private readonly maxRetries: number;
   private readonly backoffBaseMs: number;
+  private readonly defaultTimeoutMs: number;
 
   private queue: Promise<unknown> = Promise.resolve();
   private lastRequestCompletedAt = 0;
@@ -201,14 +311,16 @@ export class BangumiClient {
     this.tokenProvider = options?.tokenProvider ?? new EnvPersonalTokenProvider();
     this.username = (options?.username ?? process.env.BGM_USERNAME ?? '-').trim() || '-';
     this.coversDir = options?.coversDir ?? paths.coversDir;
+    this.cacheDb = options?.cacheDb;
     this.fetchFn = options?.fetchImpl ?? fetch;
-    this.minIntervalMs = options?.minIntervalMs ?? 150;
+    this.minIntervalMs = options?.minIntervalMs ?? 120;
     this.maxRetries = options?.maxRetries ?? 3;
     this.backoffBaseMs = options?.backoffBaseMs ?? 1000;
+    this.defaultTimeoutMs = options?.defaultTimeoutMs ?? 5000;
   }
 
   /**
-   * 串行请求调度器：保证同一客户端绝不并发请求 Bangumi API。
+   * 串行请求调度器：尊重 Bangumi 服务，绝不并发打 API。
    */
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
@@ -242,6 +354,7 @@ export class BangumiClient {
     }
   ): Promise<Response> {
     const url = `${this.baseUrl}${pathAndQuery.startsWith('/') ? '' : '/'}${pathAndQuery}`;
+    const timeoutMs = init.timeoutMs ?? this.defaultTimeoutMs;
 
     return this.enqueue(async () => {
       let token: string | null = null;
@@ -268,7 +381,7 @@ export class BangumiClient {
           headers,
           body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
           redirect: 'follow',
-          signal: init.timeoutMs ? AbortSignal.timeout(init.timeoutMs) : undefined
+          signal: timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined
         });
 
         if (res.status === 401) {
@@ -294,6 +407,185 @@ export class BangumiClient {
       }
 
       throw new Error(`Bangumi API 重试次数耗尽: ${url}`);
+    });
+  }
+
+  /**
+   * 轻量本地 SQLite 透明缓存包装：
+   * 1. 未过期直接命中返回（零网络请求）
+   * 2. 过期或未命中请求在线 API 并写入缓存
+   * 3. 若在线网络异常且存在历史旧缓存，回退返回旧缓存保证看板可用
+   */
+  private async cachedFetch<T>(
+    cacheKey: string,
+    ttlMs: number,
+    forceRefresh: boolean | undefined,
+    fetcher: () => Promise<T>
+  ): Promise<T> {
+    if (this.cacheDb && !forceRefresh) {
+      const hit = readApiCache<T>(this.cacheDb, cacheKey, false);
+      if (hit) {
+        return hit.value;
+      }
+    }
+
+    try {
+      const data = await fetcher();
+      if (this.cacheDb) {
+        writeApiCache(this.cacheDb, cacheKey, data, ttlMs);
+      }
+      return data;
+    } catch (err) {
+      if (this.cacheDb && !forceRefresh) {
+        const staleHit = readApiCache<T>(this.cacheDb, cacheKey, true);
+        if (staleHit) {
+          return staleHit.value;
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * POST /v0/search/subjects?limit={limit}&offset={offset}
+   * 在线检索条目（支持中日英关键词、标签、类型、评分/排名区间筛选）
+   */
+  async searchSubjects(
+    params: SearchSubjectsApiParams
+  ): Promise<PagedResponse<BangumiSubjectDetail>> {
+    const limit = Math.max(1, Math.min(params.limit ?? 25, 50));
+    const offset = Math.max(0, params.offset ?? 0);
+
+    const filter: Record<string, unknown> = {};
+    if (params.types && params.types.length > 0) filter.type = params.types;
+    if (params.tags && params.tags.length > 0) filter.tag = params.tags;
+    if (params.metaTags && params.metaTags.length > 0) filter.meta_tags = params.metaTags;
+    if (params.airDate && params.airDate.length > 0) filter.air_date = params.airDate;
+    if (params.rating && params.rating.length > 0) filter.rating = params.rating;
+    if (params.rank && params.rank.length > 0) filter.rank = params.rank;
+    if (!params.includeNsfw) filter.nsfw = false;
+
+    const requestBody = {
+      keyword: params.keyword,
+      sort: params.sort ?? 'match',
+      filter
+    };
+
+    const cacheKey = `search:${limit}:${offset}:${JSON.stringify(requestBody)}`;
+    return this.cachedFetch(cacheKey, 15 * 60_000, params.forceRefresh, async () => {
+      const res = await this.requestRaw(
+        `/v0/search/subjects?limit=${limit}&offset=${offset}`,
+        {
+          method: 'POST',
+          auth: 'optional',
+          body: requestBody
+        }
+      );
+      return (await res.json()) as PagedResponse<BangumiSubjectDetail>;
+    });
+  }
+
+  /**
+   * GET /v0/subjects
+   * 在线浏览季度新番与高分排行榜（Bangumi 官方第一页 CDN 缓存 24h）
+   */
+  async browseSubjects(
+    params: BrowseSubjectsApiParams
+  ): Promise<PagedResponse<BangumiSubjectDetail>> {
+    const qs = new URLSearchParams();
+    qs.set('type', String(params.type));
+    if (params.cat !== undefined) qs.set('cat', String(params.cat));
+    if (params.sort) qs.set('sort', params.sort);
+    if (params.year !== undefined) qs.set('year', String(params.year));
+    if (params.month !== undefined) qs.set('month', String(params.month));
+    qs.set('limit', String(Math.max(1, Math.min(params.limit ?? 50, 50))));
+    qs.set('offset', String(Math.max(0, params.offset ?? 0)));
+
+    const queryStr = qs.toString();
+    const cacheKey = `browse:${queryStr}`;
+
+    return this.cachedFetch(cacheKey, 30 * 60_000, params.forceRefresh, async () => {
+      const res = await this.requestRaw(`/v0/subjects?${queryStr}`, {
+        auth: 'optional'
+      });
+      return (await res.json()) as PagedResponse<BangumiSubjectDetail>;
+    });
+  }
+
+  /**
+   * GET /v0/subjects/{id}
+   */
+  async getSubject(
+    subjectId: number,
+    options?: { forceRefresh?: boolean }
+  ): Promise<BangumiSubjectDetail> {
+    const cacheKey = `subject:${subjectId}`;
+    return this.cachedFetch(cacheKey, 12 * 3600_000, options?.forceRefresh, async () => {
+      const res = await this.requestRaw(`/v0/subjects/${subjectId}`, { auth: 'optional' });
+      return (await res.json()) as BangumiSubjectDetail;
+    });
+  }
+
+  /**
+   * GET /v0/episodes?subject_id={id}&type=0&limit=100&offset=0
+   */
+  async getSubjectEpisodes(
+    subjectId: number,
+    options?: { type?: number; limit?: number; offset?: number; forceRefresh?: boolean }
+  ): Promise<PagedResponse<BangumiEpisodeItem>> {
+    const epType = options?.type ?? 0;
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 200));
+    const offset = Math.max(0, options?.offset ?? 0);
+    const cacheKey = `episodes:${subjectId}:${epType}:${limit}:${offset}`;
+
+    return this.cachedFetch(cacheKey, 6 * 3600_000, options?.forceRefresh, async () => {
+      const res = await this.requestRaw(
+        `/v0/episodes?subject_id=${subjectId}&type=${epType}&limit=${limit}&offset=${offset}`,
+        { auth: 'optional' }
+      );
+      return (await res.json()) as PagedResponse<BangumiEpisodeItem>;
+    });
+  }
+
+  /**
+   * GET /v0/subjects/{id}/characters
+   */
+  async getSubjectCharacters(
+    subjectId: number,
+    options?: { forceRefresh?: boolean }
+  ): Promise<BangumiRelatedCharacter[]> {
+    const cacheKey = `characters:${subjectId}`;
+    return this.cachedFetch(cacheKey, 24 * 3600_000, options?.forceRefresh, async () => {
+      const res = await this.requestRaw(`/v0/subjects/${subjectId}/characters`, {
+        auth: 'optional'
+      });
+      return (await res.json()) as BangumiRelatedCharacter[];
+    });
+  }
+
+  /**
+   * GET /v0/subjects/{id}/subjects
+   */
+  async getSubjectRelations(
+    subjectId: number,
+    options?: { forceRefresh?: boolean }
+  ): Promise<BangumiSubjectRelation[]> {
+    const cacheKey = `relations:${subjectId}`;
+    return this.cachedFetch(cacheKey, 24 * 3600_000, options?.forceRefresh, async () => {
+      const res = await this.requestRaw(`/v0/subjects/${subjectId}/subjects`, {
+        auth: 'optional'
+      });
+      return (await res.json()) as BangumiSubjectRelation[];
+    });
+  }
+
+  /**
+   * GET /calendar
+   */
+  async getCalendar(options?: { forceRefresh?: boolean }): Promise<CalendarDay[]> {
+    return this.cachedFetch('calendar:weekly', 3 * 3600_000, options?.forceRefresh, async () => {
+      const res = await this.requestRaw('/calendar', { auth: 'none' });
+      return (await res.json()) as CalendarDay[];
     });
   }
 
@@ -330,7 +622,8 @@ export class BangumiClient {
       ) {
         const meRes = await this.requestRaw('/v0/me', { auth: 'required' });
         const me = (await meRes.json()) as { username?: string; id?: number };
-        const detected = (me.username && String(me.username).trim()) || (me.id ? String(me.id) : '');
+        const detected =
+          (me.username && String(me.username).trim()) || (me.id ? String(me.id) : '');
         if (detected) {
           this.resolvedUsername = detected;
           const retryRes = await this.requestRaw(
@@ -380,24 +673,8 @@ export class BangumiClient {
   }
 
   /**
-   * GET /calendar
-   */
-  async getCalendar(): Promise<CalendarDay[]> {
-    const res = await this.requestRaw('/calendar', { auth: 'none' });
-    return (await res.json()) as CalendarDay[];
-  }
-
-  /**
-   * GET /v0/subjects/{id} （单条目强制刷新）
-   */
-  async getSubject(subjectId: number): Promise<BangumiSubjectDetail> {
-    const res = await this.requestRaw(`/v0/subjects/${subjectId}`, { auth: 'optional' });
-    return (await res.json()) as BangumiSubjectDetail;
-  }
-
-  /**
    * GET /v0/subjects/{id}/image?type=common
-   * 本地按 cache/covers/{id}.jpg 缓存，命中即不发网络请求。
+   * 本地按 cache/covers/{id}.jpg 缓存，并自动保持最多 300 张 LRU 上限防止占满磁盘。
    */
   async getCoverImage(
     subjectId: number,
@@ -423,7 +700,7 @@ export class BangumiClient {
     const res = await this.requestRaw(`/v0/subjects/${safeId}/image?type=${imageType}`, {
       auth: 'none',
       accept: 'image/*',
-      timeoutMs: 4000
+      timeoutMs: 5000
     });
 
     const arrayBuf = await res.arrayBuffer();
@@ -433,6 +710,7 @@ export class BangumiClient {
       writeFileSync(tmpPath, buffer);
       try {
         renameSync(tmpPath, coverPath);
+        pruneCoversCacheDir(this.coversDir, MAX_CACHED_COVERS);
       } catch {
         rmSync(tmpPath, { force: true });
       }
@@ -447,7 +725,7 @@ export class BangumiClient {
   }
 
   /**
-   * 全量拉取个人收藏并增量落盘至独立 collection.db（支持分页与在看番剧章节进度同步）
+   * 全量拉取个人收藏并落盘至轻量 collection.db（含 SlimSubject 公共标签与排名，直接支撑口味画像）
    */
   async pullAllCollectionsToDb(
     collectionDb: Database.Database,
@@ -464,11 +742,13 @@ export class BangumiClient {
       INSERT INTO collection (
         subject_id, subject_type, type, rate, ep_status, vol_status,
         comment, tags, private, updated_at,
-        subject_name, subject_name_cn, subject_eps, subject_date, subject_score
+        subject_name, subject_name_cn, subject_eps, subject_date,
+        subject_score, subject_rank, subject_total, subject_tags_json
       ) VALUES (
         @subject_id, @subject_type, @type, @rate, @ep_status, @vol_status,
         @comment, @tags, @private, @updated_at,
-        @subject_name, @subject_name_cn, @subject_eps, @subject_date, @subject_score
+        @subject_name, @subject_name_cn, @subject_eps, @subject_date,
+        @subject_score, @subject_rank, @subject_total, @subject_tags_json
       )
       ON CONFLICT(subject_id) DO UPDATE SET
         subject_type = excluded.subject_type,
@@ -484,7 +764,10 @@ export class BangumiClient {
         subject_name_cn = CASE WHEN excluded.subject_name_cn != '' THEN excluded.subject_name_cn ELSE collection.subject_name_cn END,
         subject_eps = CASE WHEN excluded.subject_eps > 0 THEN excluded.subject_eps ELSE collection.subject_eps END,
         subject_date = COALESCE(excluded.subject_date, collection.subject_date),
-        subject_score = COALESCE(excluded.subject_score, collection.subject_score)
+        subject_score = COALESCE(excluded.subject_score, collection.subject_score),
+        subject_rank = COALESCE(excluded.subject_rank, collection.subject_rank),
+        subject_total = CASE WHEN excluded.subject_total > 0 THEN excluded.subject_total ELSE collection.subject_total END,
+        subject_tags_json = CASE WHEN excluded.subject_tags_json != '[]' THEN excluded.subject_tags_json ELSE collection.subject_tags_json END
     `);
 
     const writePageTx = collectionDb.transaction((items: UserCollectionItem[]) => {
@@ -504,7 +787,12 @@ export class BangumiClient {
           subject_name_cn: item.subject?.name_cn ?? '',
           subject_eps: item.subject?.eps ?? 0,
           subject_date: item.subject?.date ?? null,
-          subject_score: item.subject?.score ?? null
+          subject_score: item.subject?.score ?? null,
+          subject_rank: item.subject?.rank ?? null,
+          subject_total: item.subject?.collection_total ?? 0,
+          subject_tags_json: JSON.stringify(
+            Array.isArray(item.subject?.tags) ? item.subject.tags : []
+          )
         });
       }
     });
@@ -597,7 +885,7 @@ export class BangumiClient {
   }
 
   async syncCalendarToDb(collectionDb: Database.Database): Promise<CalendarDay[]> {
-    const days = await this.getCalendar();
+    const days = await this.getCalendar({ forceRefresh: true });
     const fetchedAt = new Date().toISOString();
 
     const clearStmt = collectionDb.prepare('DELETE FROM calendar_cache');
@@ -632,19 +920,5 @@ export class BangumiClient {
     });
     tx();
     return days;
-  }
-
-  async refreshSubjectToDb(
-    collectionDb: Database.Database,
-    subjectId: number
-  ): Promise<BangumiSubjectDetail> {
-    const detail = await this.getSubject(subjectId);
-    const fetchedAt = new Date().toISOString();
-    collectionDb
-      .prepare(
-        'INSERT OR REPLACE INTO subject_override (subject_id, payload_json, fetched_at) VALUES (?, ?, ?)'
-      )
-      .run(subjectId, JSON.stringify(detail), fetchedAt);
-    return detail;
   }
 }

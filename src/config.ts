@@ -3,10 +3,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const USER_AGENT = 'tianchu/mokuroku';
-export const DEFAULT_LATEST_JSON_URL =
-  'https://raw.githubusercontent.com/bangumi/Archive/master/aux/latest.json';
-export const FALLBACK_LATEST_JSON_API_URL =
-  'https://api.github.com/repos/bangumi/Archive/contents/aux/latest.json';
 export const BGM_API_BASE_URL = 'https://api.bgm.tv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -67,8 +63,6 @@ export interface AppPaths {
   dataDir: string;
   cacheDir: string;
   coversDir: string;
-  downloadsDir: string;
-  activePointerPath: string;
   userDbPath: string;
 }
 
@@ -83,8 +77,6 @@ export function getAppPaths(overrides?: { dataDir?: string; cacheDir?: string })
     overrides?.cacheDir ?? process.env.MOKUROKU_CACHE_DIR ?? 'cache'
   );
   const coversDir = resolve(cacheDir, 'covers');
-  const downloadsDir = resolve(cacheDir, 'downloads');
-  const activePointerPath = resolve(dataDir, 'active-db.json');
   const userDbPath = resolve(dataDir, 'collection.db');
 
   return {
@@ -92,8 +84,6 @@ export function getAppPaths(overrides?: { dataDir?: string; cacheDir?: string })
     dataDir,
     cacheDir,
     coversDir,
-    downloadsDir,
-    activePointerPath,
     userDbPath
   };
 }

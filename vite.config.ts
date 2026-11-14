@@ -8,6 +8,6 @@ export default defineConfig({
     port: 5173
   },
   ssr: {
-    external: ['better-sqlite3', 'sqlite-better-trigram', 'sqlite-better-trigram-windows-x64']
+    external: ['better-sqlite3']
   }
 });

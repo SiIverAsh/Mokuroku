@@ -54,8 +54,12 @@
       const payload = (await res.json()) as {
         hits: SearchHit[];
         elapsedMs: number;
+          error?: string;
       };
-      liveSearchHits = payload.hits;
+        if (!res.ok && payload.error) {
+          syncBanner = `在线检索失败: ${payload.error}`;
+        }
+        liveSearchHits = payload.hits ?? [];
       liveSearchElapsedMs = payload.elapsedMs;
     } finally {
       searching = false;
@@ -150,19 +154,15 @@
   );
 </script>
 
-<!-- 顶部导航与即时全文检索 -->
+<!-- 顶部导航与即时在线检索 -->
 <header class="topbar">
   <div class="brand">
     <span class="brand-title">Mokuroku 目録</span>
     <span
       class="brand-meta"
-      title="快照文件: {data.archiveSummary.dumpName ?? '未导入'} | 导入时间: {data.archiveSummary.importedAt ?? '-'}"
+      title="模式: Bangumi v0 在线直连 + 轻量本地缓存 ({data.syncSummary.cachedEntries} 条缓存)"
     >
-      {#if data.hasArchive}
-        {data.archiveSummary.subjectCount.toLocaleString()} 条目 · SSR {data.renderMs}ms
-      {:else}
-        未导入离线库（请运行 pnpm mokuroku sync）
-      {/if}
+      在线直连 · 缓存 {data.syncSummary.cachedEntries} · SSR {data.renderMs}ms
     </span>
   </div>
 
@@ -178,7 +178,7 @@
     <input
       class="input search-input"
       type="search"
-      placeholder="检索中日英原名 / 别名 / 短词（如：葬送的芙莉莲、EVA、進撃）..."
+      placeholder="在线检索 Bangumi 原名 / 中文名 / 别名（如：葬送的芙莉莲、EVA、進撃）..."
       bind:value={searchInput}
     />
     <button class="btn btn-primary" type="submit" disabled={searching}>
@@ -194,14 +194,22 @@
       class="btn"
       onclick={handlePullCollection}
       disabled={syncingCollection}
-      title={data.archiveSummary.lastCollectionSync
-        ? `上次同步: ${data.archiveSummary.lastCollectionSync}`
+      title={data.syncSummary.lastCollectionSync
+        ? `上次同步: ${data.syncSummary.lastCollectionSync}`
         : '拉取 Bangumi 个人收藏与在看进度'}
     >
       {syncingCollection ? '同步中...' : '同步收藏'}
     </button>
   </div>
 </header>
+
+{#if data.onlineError}
+  <div
+    style="background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 6px; padding: 6px 10px; margin-bottom: 10px;"
+  >
+    {data.onlineError}（若本机直连 api.bgm.tv 受限，请在 .env 配置 HTTPS_PROXY）
+  </div>
+{/if}
 
 {#if syncBanner}
   <div

@@ -1,7 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { getSubjectDrawerDetail } from '../../../../lib/server/dashboard.js';
 import {
-  getServerArchiveDb,
   getServerBangumiClient,
   getServerCollectionDb
 } from '../../../../lib/server/db.js';
@@ -13,9 +12,13 @@ export const GET: RequestHandler = async ({ params }) => {
     throw error(400, '无效的条目 ID');
   }
 
-  const detail = getSubjectDrawerDetail(getServerArchiveDb(), getServerCollectionDb(), id);
+  const detail = await getSubjectDrawerDetail(
+    getServerCollectionDb(),
+    getServerBangumiClient(),
+    id
+  );
   if (!detail) {
-    throw error(404, '未找到对应条目');
+    throw error(502, '无法从 Bangumi 在线获取该条目详情（请检查网络或代理设置）');
   }
 
   return json(detail);
@@ -28,9 +31,15 @@ export const POST: RequestHandler = async ({ params }) => {
   }
 
   try {
-    const collectionDb = getServerCollectionDb();
-    await getServerBangumiClient().refreshSubjectToDb(collectionDb, id);
-    const detail = getSubjectDrawerDetail(getServerArchiveDb(), collectionDb, id);
+    const detail = await getSubjectDrawerDetail(
+      getServerCollectionDb(),
+      getServerBangumiClient(),
+      id,
+      { forceRefresh: true }
+    );
+    if (!detail) {
+      return json({ ok: false, error: '在线刷新未返回有效数据' }, { status: 502 });
+    }
     return json({ ok: true, detail });
   } catch (err) {
     return json(
