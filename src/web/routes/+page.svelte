@@ -1,6 +1,12 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
   import SubjectDrawer from '$lib/components/SubjectDrawer.svelte';
+  import {
+    getPlatformBadgeClass,
+    getScoreTierClass,
+    getTagBadgeClass,
+    getTagTone
+  } from '$lib/tag-colors.js';
   import type { SearchHit } from '../../search.js';
   import type { PageData } from './$types';
 
@@ -62,7 +68,9 @@
     liveSearchElapsedMs = null;
   }
 
-  function searchByTag(tagName: string) {
+  function searchByTag(tagName: string, e?: MouseEvent) {
+    e?.stopPropagation();
+    selectedSubjectId = null;
     searchInput = tagName;
     void runSearch();
   }
@@ -236,7 +244,7 @@
             {#each displayedSearchHits as hit (hit.id)}
               <tr onclick={() => (selectedSubjectId = hit.id)}>
                 <td>
-                  <span class="badge badge-neutral">
+                  <span class={getPlatformBadgeClass(hit.platformLabel || hit.typeLabel)}>
                     {hit.platformLabel || hit.typeLabel}
                   </span>
                 </td>
@@ -252,16 +260,25 @@
                 <td title={hit.tags.map((t) => t.name).join(' / ')}>
                   <div class="tag-inline-list">
                     {#each hit.tags.slice(0, 3) as t}
-                      <span class="badge badge-neutral">{t.name}</span>
+                      <span
+                        class="{getTagBadgeClass(t.name)} badge-clickable"
+                        role="button"
+                        tabindex="0"
+                        onclick={(e) => searchByTag(t.name, e)}
+                        onkeydown={(e) => e.key === 'Enter' && searchByTag(t.name)}
+                        title="点击检索标签：{t.name}"
+                      >
+                        {t.name}
+                      </span>
                     {/each}
                   </div>
                 </td>
                 <td style="color: var(--text-secondary);">{hit.date ?? '-'}</td>
                 <td class="num">
                   {#if hit.score}
-                    <strong style="color: var(--amber);">{hit.score.toFixed(1)}</strong>
+                    <span class={getScoreTierClass(hit.score)}>{hit.score.toFixed(1)}</span>
                   {:else}
-                    -
+                    <span class="score-none">-</span>
                   {/if}
                 </td>
                 <td class="num" style="color: var(--text-secondary);">
@@ -361,8 +378,12 @@
                 <td title={item.nextEpisode ? `EP.${item.nextEpisode.sort} ${item.nextEpisode.title}` : ''}>
                   <span class="badge {airBadge.cls}">{airBadge.text}</span>
                 </td>
-                <td class="num" style="color: var(--amber); font-weight: 600;">
-                  {item.score ? item.score.toFixed(1) : '-'}
+                <td class="num">
+                  {#if item.score}
+                    <span class={getScoreTierClass(item.score)}>{item.score.toFixed(1)}</span>
+                  {:else}
+                    <span class="score-none">-</span>
+                  {/if}
                 </td>
                 <td style="text-align: center;">
                   <button
@@ -433,12 +454,13 @@
             {#each data.tasteTags.slice(0, 28) as tag}
               <button
                 type="button"
-                class="taste-chip"
-                onclick={() => searchByTag(tag.name)}
+                class="badge badge-{getTagTone(tag.name)} badge-clickable"
+                style="height: 22px; gap: 4px; padding: 0 7px;"
+                onclick={(e) => searchByTag(tag.name, e)}
                 title="收藏命中 {tag.count} 部 | 加权偏好 {tag.weight}{tag.avgRate ? ` | 我的均分 ${tag.avgRate}` : ''}"
               >
                 <span>{tag.name}</span>
-                <span class="taste-chip-cnt">{tag.count}</span>
+                <span style="opacity: 0.65; font-variant-numeric: tabular-nums;">{tag.count}</span>
               </button>
             {/each}
           </div>
@@ -506,7 +528,7 @@
         <tbody>
           {#each data.seasonalAnime as item (item.id)}
             <tr onclick={() => (selectedSubjectId = item.id)}>
-              <td><span class="badge badge-neutral">{item.platformLabel}</span></td>
+              <td><span class={getPlatformBadgeClass(item.platformLabel)}>{item.platformLabel}</span></td>
               <td title="{item.nameCn || item.name} | {item.name}">
                 <span class="subj-title">{item.nameCn || item.name}</span>
                 {#if item.nameCn && item.name !== item.nameCn}
@@ -517,16 +539,25 @@
               <td title={item.tags.join(' / ')}>
                 <div class="tag-inline-list">
                   {#each item.tags.slice(0, 3) as t}
-                    <span class="badge badge-neutral">{t}</span>
+                    <span
+                      class="{getTagBadgeClass(t)} badge-clickable"
+                      role="button"
+                      tabindex="0"
+                      onclick={(e) => searchByTag(t, e)}
+                      onkeydown={(e) => e.key === 'Enter' && searchByTag(t)}
+                      title="点击检索标签：{t}"
+                    >
+                      {t}
+                    </span>
                   {/each}
                 </div>
               </td>
               <td style="color: var(--text-secondary);">{item.date}</td>
               <td class="num">
                 {#if item.score}
-                  <strong style="color: var(--amber);">{item.score.toFixed(1)}</strong>
+                  <span class={getScoreTierClass(item.score)}>{item.score.toFixed(1)}</span>
                 {:else}
-                  -
+                  <span class="score-none">-</span>
                 {/if}
               </td>
               <td class="num" style="color: var(--text-secondary);">
@@ -578,7 +609,7 @@
           {#each data.recommendations as rec (rec.id)}
             <tr onclick={() => (selectedSubjectId = rec.id)}>
               <td class="num" style="color: var(--purple); font-weight: 600;">#{rec.rank}</td>
-              <td><span class="badge badge-neutral">{rec.platformLabel}</span></td>
+              <td><span class={getPlatformBadgeClass(rec.platformLabel)}>{rec.platformLabel}</span></td>
               <td title="{rec.nameCn || rec.name} | {rec.name}">
                 <span class="subj-title">{rec.nameCn || rec.name}</span>
                 {#if rec.nameCn && rec.name !== rec.nameCn}
@@ -589,18 +620,36 @@
                 <div class="tag-inline-list">
                   {#if rec.matchedTags.length > 0}
                     {#each rec.matchedTags.slice(0, 4) as mt}
-                      <span class="badge badge-blue">★ {mt}</span>
+                      <span
+                        class="{getTagBadgeClass(mt)} badge-matched badge-clickable"
+                        role="button"
+                        tabindex="0"
+                        onclick={(e) => searchByTag(mt, e)}
+                        onkeydown={(e) => e.key === 'Enter' && searchByTag(mt)}
+                        title="命中偏好 · 点击检索：{mt}"
+                      >
+                        ★ {mt}
+                      </span>
                     {/each}
                   {:else}
                     {#each rec.topTags.slice(0, 3) as tt}
-                      <span class="badge badge-neutral">{tt}</span>
+                      <span
+                        class="{getTagBadgeClass(tt)} badge-clickable"
+                        role="button"
+                        tabindex="0"
+                        onclick={(e) => searchByTag(tt, e)}
+                        onkeydown={(e) => e.key === 'Enter' && searchByTag(tt)}
+                        title="点击检索标签：{tt}"
+                      >
+                        {tt}
+                      </span>
                     {/each}
                   {/if}
                 </div>
               </td>
               <td style="color: var(--text-secondary);">{rec.date ?? '-'}</td>
               <td class="num">
-                <strong style="color: var(--amber);">{rec.score.toFixed(1)}</strong>
+                <span class={getScoreTierClass(rec.score)}>{rec.score.toFixed(1)}</span>
               </td>
               <td class="num" style="color: var(--text-secondary);">
                 {rec.favTotal.toLocaleString()}
@@ -618,5 +667,6 @@
   subjectId={selectedSubjectId}
   onClose={() => (selectedSubjectId = null)}
   onSelectSubject={(id) => (selectedSubjectId = id)}
+  onSearchTag={(tag) => searchByTag(tag)}
   onCollectionSaved={() => void invalidateAll()}
 />

@@ -1,15 +1,23 @@
 <script lang="ts">
   import type { SubjectDrawerDetail } from '$lib/server/dashboard.js';
+  import {
+    getPlatformBadgeClass,
+    getRelationBadgeClass,
+    getScoreTierClass,
+    getTagBadgeClass
+  } from '$lib/tag-colors.js';
 
   let {
     subjectId = null,
     onClose,
     onSelectSubject,
+    onSearchTag,
     onCollectionSaved
   }: {
     subjectId: number | null;
     onClose: () => void;
     onSelectSubject: (id: number) => void;
+    onSearchTag?: (tag: string) => void;
     onCollectionSaved: () => void;
   } = $props();
 
@@ -194,9 +202,11 @@
           />
           <div style="flex: 1; min-width: 0;">
             <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px;">
-              <span class="badge badge-blue">{detail.typeLabel}{detail.platformLabel ? ` · ${detail.platformLabel}` : ''}</span>
+              <span class={getPlatformBadgeClass(detail.platformLabel || detail.typeLabel)}>
+                {detail.typeLabel}{detail.platformLabel ? ` · ${detail.platformLabel}` : ''}
+              </span>
               {#if detail.score}
-                <span class="badge badge-amber">★ {detail.score.toFixed(1)}</span>
+                <span class={getScoreTierClass(detail.score)}>★ {detail.score.toFixed(1)}</span>
               {/if}
               {#if detail.rank}
                 <span class="badge badge-purple">Rank #{detail.rank}</span>
@@ -283,9 +293,20 @@
             <div class="drawer-section-title">标签</div>
             <div style="display: flex; flex-wrap: wrap; gap: 4px;">
               {#each detail.tags.slice(0, 16) as tag}
-                <span class="badge badge-neutral" title="标注人数 {tag.count}">
-                  {tag.name} <span style="opacity: 0.6; margin-left: 3px;">{tag.count}</span>
-                </span>
+                {#if onSearchTag}
+                  <button
+                    type="button"
+                    class="{getTagBadgeClass(tag.name)} badge-clickable"
+                    onclick={() => onSearchTag(tag.name)}
+                    title="标注人数 {tag.count} · 点击检索同标签条目"
+                  >
+                    {tag.name} <span style="opacity: 0.65; margin-left: 3px;">{tag.count}</span>
+                  </button>
+                {:else}
+                  <span class={getTagBadgeClass(tag.name)} title="标注人数 {tag.count}">
+                    {tag.name} <span style="opacity: 0.65; margin-left: 3px;">{tag.count}</span>
+                  </span>
+                {/if}
               {/each}
             </div>
           </div>
@@ -352,7 +373,7 @@
                   title={rel.name}
                 >
                   <div style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <span class="badge badge-blue" style="margin-right: 5px;">{rel.relationLabel}</span>
+                    <span class={getRelationBadgeClass(rel.relationLabel)} style="margin-right: 5px;">{rel.relationLabel}</span>
                     <span>{rel.nameCn || rel.name}</span>
                   </div>
                   <span style="font-size: 11px; color: var(--text-muted); flex-shrink: 0;">
