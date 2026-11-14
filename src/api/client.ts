@@ -193,6 +193,7 @@ export class BangumiClient {
 
   private queue: Promise<unknown> = Promise.resolve();
   private lastRequestCompletedAt = 0;
+  private resolvedUsername: string | null = null;
 
   constructor(options?: BangumiClientOptions) {
     const paths = getAppPaths();
@@ -237,6 +238,7 @@ export class BangumiClient {
       auth: 'required' | 'optional' | 'none';
       body?: unknown;
       accept?: string;
+      timeoutMs?: number;
     }
   ): Promise<Response> {
     const url = `${this.baseUrl}${pathAndQuery.startsWith('/') ? '' : '/'}${pathAndQuery}`;
@@ -265,7 +267,8 @@ export class BangumiClient {
           method: init.method ?? 'GET',
           headers,
           body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-          redirect: 'follow'
+          redirect: 'follow',
+          signal: init.timeoutMs ? AbortSignal.timeout(init.timeoutMs) : undefined
         });
 
         if (res.status === 401) {
@@ -295,7 +298,7 @@ export class BangumiClient {
   }
 
   /**
-   * GET /v0/users/-/collections (或指定 username)
+   * GET /v0/users/-/collections (若远端对 '-' 返回 404 则自动通过 /v0/me 解析真实 username 重试)
    */
   async listCollections(params?: {
     subjectType?: number;
@@ -309,13 +312,36 @@ export class BangumiClient {
     search.set('limit', String(params?.limit ?? 50));
     search.set('offset', String(params?.offset ?? 0));
 
-    const userSeg = encodeURIComponent(this.username);
+    const effectiveUser = this.resolvedUsername ?? this.username;
     const qs = search.toString();
-    const res = await this.requestRaw(
-      `/v0/users/${userSeg}/collections${qs ? `?${qs}` : ''}`,
-      { auth: 'required' }
-    );
-    return (await res.json()) as PagedResponse<UserCollectionItem>;
+
+    try {
+      const res = await this.requestRaw(
+        `/v0/users/${encodeURIComponent(effectiveUser)}/collections${qs ? `?${qs}` : ''}`,
+        { auth: 'required' }
+      );
+      return (await res.json()) as PagedResponse<UserCollectionItem>;
+    } catch (err) {
+      if (
+        err instanceof BangumiApiError &&
+        err.status === 404 &&
+        effectiveUser === '-' &&
+        !this.resolvedUsername
+      ) {
+        const meRes = await this.requestRaw('/v0/me', { auth: 'required' });
+        const me = (await meRes.json()) as { username?: string; id?: number };
+        const detected = (me.username && String(me.username).trim()) || (me.id ? String(me.id) : '');
+        if (detected) {
+          this.resolvedUsername = detected;
+          const retryRes = await this.requestRaw(
+            `/v0/users/${encodeURIComponent(detected)}/collections${qs ? `?${qs}` : ''}`,
+            { auth: 'required' }
+          );
+          return (await retryRes.json()) as PagedResponse<UserCollectionItem>;
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -396,7 +422,8 @@ export class BangumiClient {
 
     const res = await this.requestRaw(`/v0/subjects/${safeId}/image?type=${imageType}`, {
       auth: 'none',
-      accept: 'image/*'
+      accept: 'image/*',
+      timeoutMs: 4000
     });
 
     const arrayBuf = await res.arrayBuffer();

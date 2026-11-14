@@ -174,16 +174,17 @@ export function getSeasonDateRange(seasonCode: string): { startDate: string; end
   }
   const year = Number(m[1]);
   const q = m[2];
+  // 日本新番常在季度前一周（如 9 月下旬开播 10 月番《葬送的芙莉莲》2023-09-29）首播，按季度放送窗口切分且互不重叠
   switch (q) {
     case '01':
-      return { startDate: `${year}-01-01`, endDate: `${year}-03-31` };
+      return { startDate: `${year - 1}-12-25`, endDate: `${year}-03-24` };
     case '04':
-      return { startDate: `${year}-04-01`, endDate: `${year}-06-30` };
+      return { startDate: `${year}-03-25`, endDate: `${year}-06-24` };
     case '07':
-      return { startDate: `${year}-07-01`, endDate: `${year}-09-30` };
+      return { startDate: `${year}-06-25`, endDate: `${year}-09-24` };
     case '10':
     default:
-      return { startDate: `${year}-10-01`, endDate: `${year}-12-31` };
+      return { startDate: `${year}-09-25`, endDate: `${year}-12-24` };
   }
 }
 

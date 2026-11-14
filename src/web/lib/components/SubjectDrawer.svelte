@@ -188,7 +188,7 @@
         <div class="drawer-hero">
           <img
             class="drawer-cover"
-            src="/api/covers/{detail.id}?offline=1"
+            src="/api/covers/{detail.id}"
             alt={detail.name}
             loading="lazy"
           />

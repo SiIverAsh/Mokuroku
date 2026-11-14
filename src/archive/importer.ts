@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, rmSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import type Database from 'better-sqlite3';
 import { seedCommonConstants } from '../db/constants.js';
@@ -196,9 +197,16 @@ export async function importArchiveToSqlite(
 
   const shouldSwitch = options.switchActive ?? !options.targetDbPath;
 
-  // Fresh database file on standby slot so active DB is untouched if anything fails
+  // Fresh database file on standby slot so active DB is untouched if anything fails.
+  // On Windows, if standby slot is locked by an idle reader (EBUSY/EPERM), allocate a new slot file.
   if (!options.targetDbPath) {
-    cleanSqliteFiles(dbPath);
+    try {
+      cleanSqliteFiles(dbPath);
+    } catch {
+      const fallbackFile = `mokuroku-${Date.now()}.db`;
+      standbyFile = fallbackFile;
+      dbPath = resolve(dirname(dbPath), fallbackFile);
+    }
   }
 
   const db = openArchiveDb(dbPath, { importMode: true });

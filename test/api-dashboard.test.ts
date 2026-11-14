@@ -111,6 +111,47 @@ describe('Bangumi v0 API client (offline MSW)', () => {
     await expect(expiredClient.listCollections()).rejects.toBeInstanceOf(TokenExpiredError);
   });
 
+  it('automatically resolves real username via /v0/me when /v0/users/-/collections returns 404', async () => {
+    server.use(
+      http.get('https://api.bgm.tv/v0/users/-/collections', () =>
+        HttpResponse.json({ title: 'Not Found', description: 'user not found' }, { status: 404 })
+      ),
+      http.get('https://api.bgm.tv/v0/me', ({ request }) => {
+        expect(request.headers.get('authorization')).toBe('Bearer pat-token');
+        return HttpResponse.json({ id: 888888, username: 'silverash', nickname: 'SilverAsh' });
+      }),
+      http.get('https://api.bgm.tv/v0/users/silverash/collections', () =>
+        HttpResponse.json({
+          total: 1,
+          limit: 50,
+          offset: 0,
+          data: [
+            {
+              subject_id: 400602,
+              subject_type: 2,
+              type: 3,
+              rate: 9,
+              ep_status: 5,
+              vol_status: 0,
+              tags: [],
+              private: false,
+              updated_at: '2026-11-14T10:00:00Z'
+            }
+          ]
+        })
+      )
+    );
+
+    const client = new BangumiClient({
+      tokenProvider: new EnvPersonalTokenProvider('pat-token'),
+      minIntervalMs: 0
+    });
+
+    const page = await client.listCollections({ subjectType: 2 });
+    expect(page.total).toBe(1);
+    expect(page.data[0]?.subject_id).toBe(400602);
+  });
+
   it('caches cover images in cache/covers/{id}.jpg and skips network on cache hit', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'mokuroku-covers-'));
     try {
@@ -243,8 +284,10 @@ describe('Bangumi v0 API client (offline MSW)', () => {
         expect(dash.watchingList[0]?.nextEpisode?.airdate).toBe('2026-11-20');
         expect(dash.watchingList[0]?.nextEpisode?.daysDiff).toBe(6);
 
-        // Seasonal anime for 2026-10 platform=1 should include #990002
+        // Seasonal anime for 2026-10 platform=1 should include #990002, and 2023-10 should include 2023-09-29 Frieren (#400602)
         expect(dash.seasonalAnime.map((x) => x.id)).toContain(990002);
+        const dash2023 = getDashboardData(archiveDb, colDb, { season: '2023-10', platform: 1 });
+        expect(dash2023.seasonalAnime.map((x) => x.id)).toContain(400602);
 
         // Taste profile should include 治愈 & 奇幻
         const tasteNames = dash.tasteTags.map((t) => t.name);
