@@ -170,15 +170,71 @@ export function buildRecentSeasonOptions(now = new Date(), count = 16): string[]
   return list;
 }
 
-function parseSeasonYearMonth(seasonCode: string): { year: number; month: number } {
+interface SeasonMonthBucket {
+  year: number;
+  month: number;
+  role: 'prev' | 'core' | 'tail';
+}
+
+export function getSeasonCourSchedule(seasonCode: string): {
+  startDate: string;
+  endDate: string;
+  months: SeasonMonthBucket[];
+} {
   const m = /^(\d{4})-(01|04|07|10)$/.exec(seasonCode.trim());
   if (!m) {
-    return parseSeasonYearMonth(getCurrentSeasonCode());
+    return getSeasonCourSchedule(getCurrentSeasonCode());
   }
-  return {
-    year: Number(m[1]),
-    month: Number(m[2])
-  };
+  const year = Number(m[1]);
+  const q = m[2];
+
+  switch (q) {
+    case '01':
+      return {
+        startDate: `${year - 1}-12-25`,
+        endDate: `${year}-03-24`,
+        months: [
+          { year: year - 1, month: 12, role: 'prev' },
+          { year, month: 1, role: 'core' },
+          { year, month: 2, role: 'core' },
+          { year, month: 3, role: 'tail' }
+        ]
+      };
+    case '04':
+      return {
+        startDate: `${year}-03-25`,
+        endDate: `${year}-06-24`,
+        months: [
+          { year, month: 3, role: 'prev' },
+          { year, month: 4, role: 'core' },
+          { year, month: 5, role: 'core' },
+          { year, month: 6, role: 'tail' }
+        ]
+      };
+    case '07':
+      return {
+        startDate: `${year}-06-25`,
+        endDate: `${year}-09-24`,
+        months: [
+          { year, month: 6, role: 'prev' },
+          { year, month: 7, role: 'core' },
+          { year, month: 8, role: 'core' },
+          { year, month: 9, role: 'tail' }
+        ]
+      };
+    case '10':
+    default:
+      return {
+        startDate: `${year}-09-25`,
+        endDate: `${year}-12-24`,
+        months: [
+          { year, month: 9, role: 'prev' },
+          { year, month: 10, role: 'core' },
+          { year, month: 11, role: 'core' },
+          { year, month: 12, role: 'tail' }
+        ]
+      };
+  }
 }
 
 function computeAirStatus(
@@ -395,27 +451,47 @@ export async function getDashboardData(
     topTasteMap.set(t.name, t.weight / Math.max(1, maxTasteWeight));
   }
 
-  // 3. Online Seasonal Anime (GET /v0/subjects?type=2&year=YYYY&month=MM&cat=...)
-  const { year: seasonYear, month: seasonMonth } = parseSeasonYearMonth(currentSeason);
-  let seasonalSubjects: BangumiSubjectDetail[] = [];
-  try {
-    const page = await client.browseSubjects({
-      type: 2,
-      year: seasonYear,
-      month: seasonMonth,
-      cat: platformFilter !== null ? platformFilter : undefined,
-      sort: 'rank',
-      limit: 50,
-      offset: 0
-    });
-    seasonalSubjects = page.data ?? [];
-  } catch (err) {
-    recordOnlineError(err);
+  // 3. Online Seasonal Anime: full cour window + full multi-page pagination (sort='date' includes unranked anime)
+  const seasonSchedule = getSeasonCourSchedule(currentSeason);
+  const seasonalSubjectMap = new Map<
+    number,
+    { subject: BangumiSubjectDetail; fallbackDate: string }
+  >();
+
+  for (const bucket of seasonSchedule.months) {
+    try {
+      const monthItems = await client.browseAllSubjects({
+        type: 2,
+        year: bucket.year,
+        month: bucket.month,
+        cat: platformFilter !== null ? platformFilter : undefined,
+        sort: 'date',
+        stopBeforeDate: bucket.role === 'prev' ? seasonSchedule.startDate : undefined
+      });
+
+      const fallbackDate = `${bucket.year}-${String(bucket.month).padStart(2, '0')}`;
+      for (const s of monthItems) {
+        const cleanDate = typeof s.date === 'string' ? s.date.trim() : '';
+        const isIso = /^\d{4}-\d{2}-\d{2}$/.test(cleanDate);
+
+        if (bucket.role === 'prev') {
+          if (!isIso || cleanDate < seasonSchedule.startDate) continue;
+        } else if (bucket.role === 'tail') {
+          if (isIso && cleanDate > seasonSchedule.endDate) continue;
+        }
+
+        if (!seasonalSubjectMap.has(s.id)) {
+          seasonalSubjectMap.set(s.id, { subject: s, fallbackDate });
+        }
+      }
+    } catch (err) {
+      recordOnlineError(err);
+    }
   }
 
-  const seasonalAnime: SeasonalAnimeItem[] = seasonalSubjects
-    .filter((s) => !s.nsfw)
-    .map((s) => {
+  const seasonalAnime: SeasonalAnimeItem[] = Array.from(seasonalSubjectMap.values())
+    .filter(({ subject: s }) => !s.nsfw)
+    .map(({ subject: s, fallbackDate }) => {
       const col = collectionBySubjectId.get(s.id);
       const { studio } = extractWikiV0Metadata(s.infobox);
       const cleanTags = (s.tags ?? [])
@@ -427,14 +503,18 @@ export async function getDashboardData(
       const doing = Number(s.collection?.doing ?? 0) || 0;
       const onHold = Number(s.collection?.on_hold ?? 0) || 0;
       const dropped = Number(s.collection?.dropped ?? 0) || 0;
+      const cleanDate = typeof s.date === 'string' ? s.date.trim() : '';
 
       return {
         id: s.id,
         name: s.name,
         nameCn: s.name_cn ?? '',
         platform: null,
-        platformLabel: normalizePlatformLabel(s.platform, s.type) || 'TV',
-        date: s.date ?? `${seasonYear}-${String(seasonMonth).padStart(2, '0')}`,
+        platformLabel:
+          normalizePlatformLabel(s.platform, s.type) ||
+          (platformFilter !== null ? normalizePlatformLabel(platformFilter, 2) : '') ||
+          'TV',
+        date: cleanDate || fallbackDate,
         score: typeof s.rating?.score === 'number' && s.rating.score > 0 ? s.rating.score : null,
         rank: typeof s.rating?.rank === 'number' && s.rating.rank > 0 ? s.rating.rank : null,
         favDoing: doing,
@@ -445,7 +525,13 @@ export async function getDashboardData(
         myRate: col?.rate ?? 0
       };
     })
-    .sort((a, b) => b.favDoing - a.favDoing || (b.score ?? 0) - (a.score ?? 0));
+    .sort(
+      (a, b) =>
+        b.favDoing - a.favDoing ||
+        b.favTotal - a.favTotal ||
+        (b.score ?? 0) - (a.score ?? 0) ||
+        a.date.localeCompare(b.date)
+    );
 
   // 4. Online High-Score & Profile-Matched Recommendations
   const recCandidateMap = new Map<number, BangumiSubjectDetail>();

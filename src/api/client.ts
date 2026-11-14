@@ -513,6 +513,56 @@ export class BangumiClient {
   }
 
   /**
+   * 按 limit=50 自动串行翻页拉取符合筛选条件的全部条目（复用单页 SQLite 缓存，并在 offset >= total 时精准停止）
+   */
+  async browseAllSubjects(
+    params: Omit<BrowseSubjectsApiParams, 'limit' | 'offset'> & {
+      stopBeforeDate?: string;
+      maxPages?: number;
+    }
+  ): Promise<BangumiSubjectDetail[]> {
+    const pageSize = 50;
+    const maxPages = params.maxPages ?? 30;
+    const sort = params.sort ?? 'date';
+    const results: BangumiSubjectDetail[] = [];
+    let offset = 0;
+
+    for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
+      const page = await this.browseSubjects({
+        type: params.type,
+        cat: params.cat,
+        sort,
+        year: params.year,
+        month: params.month,
+        limit: pageSize,
+        offset,
+        forceRefresh: params.forceRefresh
+      });
+
+      const batch = page.data ?? [];
+      if (batch.length === 0) break;
+
+      results.push(...batch);
+      offset += batch.length;
+
+      if (params.stopBeforeDate && sort === 'date') {
+        const reachedOlder = batch.some(
+          (s) =>
+            typeof s.date === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(s.date.trim()) &&
+            s.date.trim() < params.stopBeforeDate!
+        );
+        if (reachedOlder) break;
+      }
+
+      if (page.total > 0 && offset >= page.total) break;
+      if (batch.length < pageSize) break;
+    }
+
+    return results;
+  }
+
+  /**
    * GET /v0/subjects/{id}
    */
   async getSubject(

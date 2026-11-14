@@ -288,12 +288,16 @@ describe('Bangumi v0 online API client & dashboard (offline MSW)', () => {
             ]
           })
         ),
-        // Online GET /v0/subjects (handles both seasonal year+month and global top rank)
+        // Online GET /v0/subjects (handles seasonal cour months and global top rank)
         http.get('https://api.bgm.tv/v0/subjects', ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get('year') === '2026') {
-            expect(url.searchParams.get('month')).toBe('10');
             expect(url.searchParams.get('cat')).toBe('1');
+            expect(url.searchParams.get('sort')).toBe('date');
+            const month = url.searchParams.get('month');
+            if (month !== '10') {
+              return HttpResponse.json({ total: 0, limit: 50, offset: 0, data: [] });
+            }
             return HttpResponse.json({
               total: 1,
               limit: 50,
@@ -517,6 +521,184 @@ describe('Bangumi v0 online API client & dashboard (offline MSW)', () => {
       expect(dash.onlineError).toBeTruthy();
       expect(dash.collectionStats.doing).toBe(1);
       expect(dash.tasteTags[0]?.name).toBe('治愈');
+    } finally {
+      colDb.close();
+    }
+  });
+
+  it('paginates all seasonal anime beyond 50 items across the full cour window and includes unranked entries', async () => {
+    const colDb = openCollectionDb(':memory:');
+    try {
+      const octSubjects = Array.from({ length: 65 }, (_, idx) => ({
+        id: 600001 + idx,
+        type: 2,
+        name: `Autumn Anime #${idx + 1}`,
+        name_cn: `十月番 #${idx + 1}`,
+        summary: '',
+        nsfw: false,
+        platform: 'TV',
+        date: `2026-10-${String((idx % 28) + 1).padStart(2, '0')}`,
+        // Half unranked to verify sort='date' keeps newly airing / upcoming entries
+        rating: idx < 30 ? { score: 7.5, rank: 800 + idx } : { score: 0 },
+        collection: { wish: 500 - idx, doing: 1000 - idx * 10 }
+      }));
+
+      let sepPageCalls = 0;
+
+      server.use(
+        http.get('https://api.bgm.tv/v0/subjects', ({ request }) => {
+          const url = new URL(request.url);
+          const year = url.searchParams.get('year');
+          const month = url.searchParams.get('month');
+          const offset = Number(url.searchParams.get('offset') ?? '0');
+          const limit = Number(url.searchParams.get('limit') ?? '50');
+
+          if (!year) {
+            // Global top benchmark query
+            return HttpResponse.json({ total: 0, limit, offset, data: [] });
+          }
+
+          expect(url.searchParams.get('sort')).toBe('date');
+
+          if (year === '2026' && month === '9') {
+            sepPageCalls += 1;
+            // Page 0 contains both a late-Sep cour premiere (>= 09-25) and an older mid-Sep item (< 09-25)
+            return HttpResponse.json({
+              total: 120,
+              limit,
+              offset,
+              data: [
+                {
+                  id: 599901,
+                  type: 2,
+                  name: 'Early Cour Premiere',
+                  name_cn: '九月末抢跑新番',
+                  summary: '',
+                  nsfw: false,
+                  platform: 'TV',
+                  date: '2026-09-28',
+                  collection: { doing: 5000 }
+                },
+                {
+                  id: 599800,
+                  type: 2,
+                  name: 'Summer Leftover',
+                  name_cn: '七月番尾声',
+                  summary: '',
+                  nsfw: false,
+                  platform: 'TV',
+                  date: '2026-09-18',
+                  collection: { doing: 300 }
+                }
+              ]
+            });
+          }
+
+          if (year === '2026' && month === '10') {
+            if (offset >= octSubjects.length) {
+              return new HttpResponse('offset out of range', { status: 400 });
+            }
+            return HttpResponse.json({
+              total: octSubjects.length,
+              limit,
+              offset,
+              data: octSubjects.slice(offset, offset + limit)
+            });
+          }
+
+          if (year === '2026' && month === '11') {
+            return HttpResponse.json({
+              total: 2,
+              limit,
+              offset,
+              data: [
+                {
+                  id: 610001,
+                  type: 2,
+                  name: 'Nov Web Anime',
+                  name_cn: '十一月网飞独播',
+                  summary: '',
+                  nsfw: false,
+                  platform: 'WEB',
+                  date: '2026-11-12',
+                  collection: { wish: 800, doing: 200 }
+                },
+                {
+                  id: 610002,
+                  type: 2,
+                  name: 'Nov Undated OVA',
+                  name_cn: '十一月未定日OVA',
+                  summary: '',
+                  nsfw: false,
+                  platform: 'OVA',
+                  date: '',
+                  collection: { wish: 120 }
+                }
+              ]
+            });
+          }
+
+          if (year === '2026' && month === '12') {
+            return HttpResponse.json({
+              total: 2,
+              limit,
+              offset,
+              data: [
+                {
+                  id: 620001,
+                  type: 2,
+                  name: 'Dec Winter Early Premiere',
+                  name_cn: '十二月末一月番抢跑',
+                  summary: '',
+                  nsfw: false,
+                  platform: 'TV',
+                  date: '2026-12-27',
+                  collection: { doing: 3000 }
+                },
+                {
+                  id: 620002,
+                  type: 2,
+                  name: 'Dec Autumn Movie',
+                  name_cn: '十二月秋季剧场版',
+                  summary: '',
+                  nsfw: false,
+                  platform: '剧场版',
+                  date: '2026-12-18',
+                  collection: { wish: 1500, doing: 400 }
+                }
+              ]
+            });
+          }
+
+          return HttpResponse.json({ total: 0, limit, offset, data: [] });
+        })
+      );
+
+      const client = new BangumiClient({
+        tokenProvider: new EnvPersonalTokenProvider(''),
+        cacheDb: colDb,
+        minIntervalMs: 0
+      });
+
+      const dash = await getDashboardData(colDb, client, {
+        season: '2026-10',
+        now: new Date('2026-11-14T12:00:00Z')
+      });
+
+      expect(dash.onlineError).toBeNull();
+      // 1 (Sep >= 09-25) + 65 (Oct across 2 pages) + 2 (Nov) + 1 (Dec <= 12-24) = 69 items (> 50!)
+      expect(dash.seasonalAnime.length).toBe(69);
+      expect(sepPageCalls).toBe(1); // stopped after page 0 upon seeing 2026-09-18 < 2026-09-25
+
+      const ids = new Set(dash.seasonalAnime.map((x) => x.id));
+      expect(ids.has(599901)).toBe(true); // 2026-09-28 included
+      expect(ids.has(599800)).toBe(false); // 2026-09-18 excluded
+      expect(ids.has(600065)).toBe(true); // 65th Oct unranked anime from page 2 included
+      expect(ids.has(610002)).toBe(true); // Nov undated OVA included with fallback '2026-11'
+      expect(ids.has(620002)).toBe(true); // 2026-12-18 included
+      expect(ids.has(620001)).toBe(false); // 2026-12-27 belongs to 2027-01 cour window
+      expect(dash.seasonalAnime.find((x) => x.id === 610002)?.date).toBe('2026-11');
+      expect(dash.seasonalAnime[0]?.id).toBe(599901); // highest favDoing (5000) sorted first
     } finally {
       colDb.close();
     }
