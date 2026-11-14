@@ -11,8 +11,8 @@
     "mokuroku": "./bin/mokuroku.mjs"
   },
   "scripts": {
-    "mokuroku": "tsx src/cli.ts",
-    "sync": "tsx src/cli.ts sync",
+    "mokuroku": "node --env-file-if-exists=.env --use-env-proxy ./node_modules/tsx/dist/cli.mjs src/cli.ts",
+    "sync": "node --env-file-if-exists=.env --use-env-proxy ./node_modules/tsx/dist/cli.mjs src/cli.ts sync",
     "dev": "vite dev --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",

@@ -216,14 +216,15 @@ cli
     }
 
     console.log(`[mokuroku] 看板已启动: http://${host}:${port}`);
-    const child = spawn(process.execPath, [builtServer], {
+    const child = spawn(process.execPath, ['--use-env-proxy', builtServer], {
       cwd: PROJECT_ROOT,
       stdio: 'inherit',
       env: {
         ...process.env,
         HOST: host,
         PORT: port,
-        ORIGIN: `http://${host}:${port}`
+        ORIGIN: `http://${host}:${port}`,
+        NO_PROXY: process.env.NO_PROXY ?? '127.0.0.1,localhost'
       }
     });
     child.on('exit', (c) => process.exit(c ?? 0));

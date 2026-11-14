@@ -515,7 +515,7 @@
       <table class="compact-table">
         <thead>
           <tr>
-            <th style="width: 62px;">平台</th>
+            <th style="width: 70px;">平台</th>
             <th style="width: 30%;">番剧名称</th>
             <th style="width: 16%;">动画制作</th>
             <th style="width: 22%;">标签</th>
@@ -596,7 +596,7 @@
         <thead>
           <tr>
             <th class="num" style="width: 64px;">排名</th>
-            <th style="width: 62px;">平台</th>
+            <th style="width: 70px;">平台</th>
             <th style="width: 32%;">推荐番剧</th>
             <th style="width: 28%;">命中偏好 / 核心标签</th>
             <th style="width: 88px;">年份/首播</th>
